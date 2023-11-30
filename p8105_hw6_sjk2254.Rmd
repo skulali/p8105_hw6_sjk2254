@@ -1,0 +1,13 @@
+---
+title: "p8105_hw6_sjk3354"
+author: "Sharon Kulali"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+# necessary library
+
+library(tidyverse)
+```
+
+
