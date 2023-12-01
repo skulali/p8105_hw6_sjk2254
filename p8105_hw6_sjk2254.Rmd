@@ -140,35 +140,25 @@ set.seed(123)
 ```
 
 ```{r}
-# creating a function for the bootstrap 
-
-boot_sample = function(df) {
-  
-  sample_frac(df, replace = T)
-  
-}
-```
-
-```{r}
 # getting the estimates from the bootstrap
 
 boot_tidy =
-  tibble(strap_number = 1:5000) |>
+  weather_df |> 
+  modelr::bootstrap(n = 5000) |>
   mutate(
-    strap_sample = map(strap_number, \(i) boot_sample(weather_df)),
-    models = map(strap_sample, \(df) lm(tmax ~ tmin + prcp, data = df)),
+    models = map(strap, \(df) lm(tmax ~ tmin + prcp, data = df)),
     results = map(models, broom::tidy)
   ) |> 
-  select(strap_number, results) |> 
+  select(.id, results) |> 
   unnest(results) |> 
-  select(strap_number, term, estimate) |> 
+  select(.id, term, estimate) |> 
   filter(term != "(Intercept)") |> 
   pivot_wider(
     names_from = term,
     values_from = estimate
   ) |> 
   mutate(
-    log_betas = log1p(tmin*prcp)
+    log_betas = log(tmin*prcp)
   )
 ```
 
@@ -176,15 +166,15 @@ boot_tidy =
 # getting the r squared from the bootstrap
 
 boot_glance =
-  tibble(strap_number = 1:5000) |>
+  weather_df |> 
+  modelr::bootstrap(n = 5000) |>
   mutate(
-    strap_sample = map(strap_number, \(i) boot_sample(weather_df)),
-    models = map(strap_sample, \(df) lm(tmax ~ tmin + prcp, data = df)),
+    models = map(strap, \(df) lm(tmax ~ tmin + prcp, data = df)),
     results = map(models, broom::glance)
   ) |> 
-  select(strap_number, results) |> 
+  select(.id, results) |> 
   unnest(results) |> 
-  select(strap_number, r.squared)
+  select(.id, r.squared)
 ```
 
 ```{r}
@@ -203,29 +193,26 @@ boot_glance |>
   hist(main = "Distribution of R^2", xlab = "R^2")
 ```
 
-The above plot shows the distribution of 5000 bootstrap estimates for the `r.squared` (r^2) and `log_betas` (log of beta_1 * beta_2) from a fitted regression. The regression model examined how the minimum temperature and precipitation affect the maximum temperature. You can see that the distribution for the log_betas is slightly skewed to the right while the distribution for the r^2 is slightly skewed to the left.
+The above plot shows the distribution of 5000 bootstrap estimates for the `r.squared` (r^2) and `log_betas` (log of beta_1 * beta_2) from a fitted regression. The regression model examined how the minimum temperature and precipitation affect the maximum temperature. You can see that the distributions are slightly skewed to the left on both plots.
 
 ```{r}
-# getting the quantiles for the r squared
+# getting the quantiles for the r squared and estimates
 
 boot_glance |> 
   mutate(r.squared = as.numeric(r.squared)) |> 
   pull(r.squared) |> 
-  quantile(c(0.025, 0.975))
-```
-
-We are 95% confident that the true r^2 value is between 0.8895 and 0.9405.
-
-```{r}
-# getting the quantiles for the estimates
+  quantile(c(0.025, 0.975)) |> 
+  knitr::kable(digits = 3)
 
 boot_tidy |> 
+  drop_na() |> 
   mutate(log_betas = as.numeric(log_betas)) |> 
   pull(log_betas) |> 
-  quantile(c(0.025, 0.975))
+  quantile(c(0.025, 0.975)) |> 
+  knitr::kable(digits = 3)
 ```
 
-We are 95% confident that the true log(beta_1*beta_2) is between -0.0097 and 0.0076.
+We are 95% confident that the true r^2 value is between 0.889 and 0.941. We are 95% confident that the true log(beta_1*beta_2) is between -8.926 and -4.591. Additionally, there were `r boot_tidy |> filter(log_betas == "NaN") |> nrow()` Na values in the estimate when the betas were multiplied and produced a negative value which you can't take the log of.
 
 # Problem 3
 
@@ -344,7 +331,8 @@ cv_restults |>
     names_prefix = "rmse_"
   ) |> 
   group_by(model_type) |> 
-  summarise(m_rmse = mean(rmse)) 
+  summarise(m_rmse = mean(rmse)) |> 
+  knitr::kable(digits = 3)
 
 cv_restults |> 
   select(starts_with("rmse")) |> 
